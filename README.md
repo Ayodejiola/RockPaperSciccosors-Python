@@ -1,2 +1,2 @@
-# RockPaperSciccosors-Python
-Used Python to create a game: Rock Paper Scissors
+# Guess-Python
+Used Python to create a game: Guess
