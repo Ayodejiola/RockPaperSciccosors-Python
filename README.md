@@ -33,33 +33,34 @@ The API documentation is at `http://localhost:8000/docs`. Local Compose uses dis
 
 ## Azure deployment outline
 
-Azure CLI is installed and authenticated in the deployment workspace. The East US resource group `rg-game-dev-eastus` contains a partially deployed stack: AKS is running, and the ACR, Foundry account/model, Redis cache, and Redis private endpoint have been created. PostgreSQL has not been created because this subscription cannot provision it in East US. The template now places PostgreSQL in Central US and connects it privately to AKS using global VNet peering and private DNS linked to both VNets. The latest what-if predicts 7 additional resources and redeployment of 23 existing resources; no Central US database or peering resources have been created yet. The original monthly estimate excludes variable cross-region peering traffic charges. Bicep 0.48.1 emits a schema warning for the Redis Enterprise preview API; Azure what-if accepted the template, but deployment remains the authoritative validation.
+The Azure deployment `game-dev-completion-final-20261027` succeeded. The East US resource group `rg-game-dev-eastus` now has AKS, ACR, the Foundry account/project and GPT-4.1 mini deployment, and private Azure Managed Redis. PostgreSQL Flexible Server is in Central US, with private DNS linked to both VNets and global VNet peering to AKS. Both application images are in ACR, the API and read-only incident agent are running in AKS, and Prometheus/Grafana are installed with ClusterIP services. The API has been smoke-tested against PostgreSQL and Redis, and the incident agent completed a read-only investigation.
 
-1. Install Docker, `kubectl`, and Helm; sign in to Azure CLI and select the intended subscription. Ensure the deployment identity can create role assignments, since the template grants the AKS, ACR, and Foundry workload identities their scoped roles.
-2. Review the Bicep and cost notes below. This is a continuously running stack; stop or delete dev resources when not in use.
-3. Deploy `infra/main.bicep` to `rg-game-dev-eastus`, supplying a strong PostgreSQL administrator password as a secure parameter. AKS and Redis are in East US; PostgreSQL defaults to Central US (`postgresLocation`) because of the current subscription restriction. The template peers the VNets and links private DNS to both. Pass `aksAdminGroupObjectIds` for a Microsoft Entra group whose members need cluster-admin access. If omitted, grant the deployment operator the appropriate AKS user and Azure RBAC roles separately. Confirm GPT-4.1 mini quota in East US.
-4. Build and push both images to ACR:
+Argo CD has not yet been installed. The commits described in this deployment are local until pushed to the GitHub repository; push them before bootstrapping Argo CD so its Applications can read the manifests. The Redis Enterprise preview API still emits Bicep warning BCP081 because type metadata is unavailable; the Azure deployment itself succeeded. Cross-region VNet peering data-transfer charges are variable and are not included in the monthly estimate.
+
+1. Sign in to Azure CLI and select the intended subscription. Ensure the deployment identity can create role assignments, since the template grants the AKS, ACR, and Foundry workload identities their scoped roles.
+2. Review the Bicep and cost notes below. This is a continuously running stack; stop or delete development resources when not in use.
+3. To reproduce or update the deployment, use `infra/main.bicep` and pass `postgresAdminPassword` as a secure parameter (for example, through a protected parameter file). AKS and Redis are in East US; PostgreSQL defaults to Central US (`postgresLocation`) because PostgreSQL version 16 is unavailable to this subscription in East US. The template peers the VNets and links private DNS to both. Pass `aksAdminGroupObjectIds` for a Microsoft Entra group whose members need cluster-admin access; otherwise, grant the deployment operator the required AKS user and Azure RBAC roles separately.
+4. To rebuild and publish the images, use the deployed ACR:
 
    ```sh
-   az acr build --registry <acr-name> --image guessing-api:0.1.0 .
-   az acr build --registry <acr-name> --image incident-agent:0.1.0 --file Dockerfile.agent .
+   az acr build --registry acrgameuemrtz --image guessing-api:0.1.0 .
+   az acr build --registry acrgameuemrtz --image incident-agent:0.1.0 --file Dockerfile.agent .
    ```
 
-5. Replace the image registry placeholders in `k8s/app/namespace.yaml` and `k8s/incident-agent/agent.yaml`, then set the Foundry endpoint and the `foundryAgentIdentityClientId` output in the incident-agent manifest. Review and commit those non-secret deployment values.
-6. Create the `guessing-game` namespace and the `guessing-api-secrets` Kubernetes secret with:
+5. The non-secret ACR and Foundry values are already set in the Kubernetes manifests. The database and Redis connection strings are stored in the `guessing-api-secrets` Kubernetes Secret; never commit them to Git. When recreating that Secret, use:
    - `database-url`: `postgresql+asyncpg://gameadmin:<URL-encoded-password>@<private-postgres-fqdn>:5432/game?ssl=require`
    - `redis-url`: `rediss://default:<redis-access-key>@<redis-hostname>:10000/0`
 
-   Create the namespace first with `kubectl create namespace guessing-game`. Obtain the Redis access key through an authorized Azure CLI/key retrieval flow and do not place it in Git.
-7. Install Argo CD on the cluster and bootstrap it:
+   Create the `guessing-game` namespace before its Secret. Obtain the Redis access key through an authorized Azure CLI flow and keep both credentials out of Git.
+6. After pushing the commits to the configured GitHub repository, bootstrap Argo CD:
 
    ```sh
-   REPOSITORY_URL=https://github.com/OWNER/REPOSITORY.git scripts/bootstrap-argocd.sh
+   REPOSITORY_URL=https://github.com/Ayodejiola/RockPaperSciccosors-Python.git scripts/bootstrap-argocd.sh
    ```
 
-   For a private Git repository, configure repository credentials in Argo CD before applying its applications.
+   The bootstrap script installs Argo CD, configures the Grafana admin Secret, and applies the Applications. For a private Git repository, configure repository credentials in Argo CD first.
 
-8. Verify the API, incident-agent, and monitoring pods. Forward the agent, API, and Grafana services locally as needed; do not expose them publicly without adding TLS and authentication.
+7. Verify the API, incident-agent, and monitoring pods. Forward the agent, API, and Grafana services locally as needed; do not expose them publicly without adding TLS and authentication.
 
 The incident agent investigates only when called; it does not poll continuously or execute cluster changes. Forward the service and submit a specific incident context:
 

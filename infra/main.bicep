@@ -324,7 +324,10 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   location: location
   kind: 'AIServices'
   identity: {
-    type: 'SystemAssigned'
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: {
+      '${foundryAgentIdentity.id}': {}
+    }
   }
   sku: {
     name: 'S0'
@@ -342,6 +345,9 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-06-0
   parent: foundry
   name: foundryProjectName
   location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     description: 'Read-only AKS incident investigation tools'
     displayName: 'AKS incident operations'
@@ -365,6 +371,7 @@ resource foundryModel 'Microsoft.CognitiveServices/accounts/deployments@2023-05-
       version: '2025-04-14'
     }
     versionUpgradeOption: 'OnceNewDefaultVersionAvailable'
+    raiPolicyName: 'Microsoft.DefaultV2'
   }
 }
 
@@ -393,7 +400,7 @@ resource agentFederatedCredential 'Microsoft.ManagedIdentity/userAssignedIdentit
   }
 }
 
-resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2025-08-01' = {
+resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: postgresName
   location: postgresLocation
   sku: {
@@ -527,6 +534,7 @@ resource redisDatabase 'Microsoft.Cache/redisEnterprise/databases@2026-10-01-pre
   parent: redis
   name: 'default'
   properties: {
+    accessKeysAuthentication: 'Enabled'
     clientProtocol: 'Encrypted'
     clusteringPolicy: 'EnterpriseCluster'
     evictionPolicy: 'VolatileLRU'

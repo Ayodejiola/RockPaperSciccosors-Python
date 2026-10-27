@@ -37,7 +37,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: api
-          image: REPLACE_WITH_ACR.azurecr.io/guessing-api:0.1.0
+          image: acrgameuemrtz.azurecr.io/guessing-api:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -11,7 +11,7 @@ metadata:
   name: incident-agent
   namespace: incident-agent
   annotations:
-    azure.workload.identity/client-id: REPLACE_WITH_FOUNDRY_AGENT_IDENTITY_CLIENT_ID
+    azure.workload.identity/client-id: 068e7f19-93db-4e85-8f49-7111744e62ba
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -34,14 +34,14 @@ spec:
       serviceAccountName: incident-agent
       containers:
         - name: agent
-          image: REPLACE_WITH_ACR.azurecr.io/incident-agent:0.1.0
+          image: acrgameuemrtz.azurecr.io/incident-agent:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
           env:
             - name: AZURE_OPENAI_ENDPOINT
-              value: REPLACE_WITH_FOUNDRY_OPENAI_ENDPOINT
+              value: https://ai-game-uemrtz.openai.azure.com
             - name: AZURE_OPENAI_DEPLOYMENT
               value: gpt-4.1-mini
             - name: PROMETHEUS_URL
