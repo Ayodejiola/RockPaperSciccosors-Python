@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: incident-agent
+  labels:
+    app.kubernetes.io/part-of: incident-response
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: incident-agent
+  namespace: incident-agent
+  annotations:
+    azure.workload.identity/client-id: REPLACE_WITH_FOUNDRY_AGENT_IDENTITY_CLIENT_ID
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-agent
+  namespace: incident-agent
+  labels:
+    app.kubernetes.io/name: incident-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: incident-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: incident-agent
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: incident-agent
+      containers:
+        - name: agent
+          image: REPLACE_WITH_ACR.azurecr.io/incident-agent:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: AZURE_OPENAI_ENDPOINT
+              value: REPLACE_WITH_FOUNDRY_OPENAI_ENDPOINT
+            - name: AZURE_OPENAI_DEPLOYMENT
+              value: gpt-4.1-mini
+            - name: PROMETHEUS_URL
+              value: http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090
+            - name: TARGET_NAMESPACE
+              value: guessing-game
+            - name: TARGET_DEPLOYMENT
+              value: guessing-api
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 12
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-agent
+  namespace: incident-agent
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: incident-agent
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

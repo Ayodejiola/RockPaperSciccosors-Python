@@ -1,0 +1,142 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guessing-api
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/REPLACE_WITH_OWNER/REPLACE_WITH_REPOSITORY.git
+    targetRevision: main
+    path: k8s/app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: guessing-game
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 69.8.2
+    helm:
+      values: |
+        grafana:
+          admin:
+            existingSecret: grafana-admin
+            userKey: admin-user
+            passwordKey: admin-password
+          persistence:
+            enabled: true
+            size: 8Gi
+          service:
+            type: ClusterIP
+        additionalPrometheusRulesMap:
+          guessing-game-alerts:
+            groups:
+              - name: guessing-game
+                rules:
+                  - alert: GuessingApiHighP95Latency
+                    expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 2
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: Guessing API p95 latency exceeds 2 seconds
+                  - alert: GuessingApiHighErrorRate
+                    expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.000001) > 0.04
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: Guessing API error rate exceeds 4 percent
+                  - alert: RedisRejectedConnectionsIncreasing
+                    expr: increase(redis_rejected_connections_total[5m]) > 0
+                    for: 2m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: Redis is rejecting connections
+                  - alert: GuessingApiDatabasePoolSaturated
+                    expr: max(app_db_pool_checked_out / clamp_min(app_db_pool_capacity, 1)) > 0.8
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: API database connection pool is over 80 percent utilized
+        prometheus:
+          prometheusSpec:
+            retention: 7d
+            retentionSize: 5GB
+            additionalScrapeConfigs:
+              - job_name: guessing-api
+                kubernetes_sd_configs:
+                  - role: pod
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                    action: keep
+                    regex: "true"
+                  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                    action: replace
+                    target_label: __metrics_path__
+                    regex: (.+)
+                  - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                    action: replace
+                    target_label: __address__
+                    regex: ([^:]+)(?::\d+)?;(\d+)
+                    replacement: $1:$2
+            resources:
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                cpu: "1"
+                memory: 2Gi
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 8Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: incident-agent
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/REPLACE_WITH_OWNER/REPLACE_WITH_REPOSITORY.git
+    targetRevision: main
+    path: k8s/incident-agent
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: incident-agent
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
